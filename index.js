@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, delay } = require('@whiskeysockets/baileys');
 const express = require('express');
 const qrImage = require('qr-image');
 
@@ -38,17 +38,44 @@ async function connectToWhatsApp() {
     });
 }
 
-// QR Code Endpoint
+// 1. Phone Number Login / Pairing Code Endpoint (No QR needed!)
+app.get('/pairing-code', async (req, res) => {
+    const phone = req.query.phone;
+    if (!phone) {
+        return res.status(400).send('Please add phone number! Example: /pairing-code?phone=917838436638');
+    }
+    
+    try {
+        if (!sock) return res.status(500).send('Socket not ready. Retry in 10 seconds.');
+        
+        // Wait a moment for socket connection
+        await delay(2000);
+        const cleanNumber = phone.replace(/[^0-9]/g, '');
+        const code = await sock.requestPairingCode(cleanNumber);
+        
+        res.send(`
+            <div style="font-family:sans-serif; text-align:center; padding:40px;">
+                <h2>Your WhatsApp Pairing Code:</h2>
+                <h1 style="background:#25D366; color:white; display:inline-block; padding:10px 20px; border-radius:10px; letter-spacing:5px;">${code}</h1>
+                <p>Open WhatsApp ➔ Linked Devices ➔ Link with phone number instead ➔ Enter this code!</p>
+            </div>
+        `);
+    } catch (err) {
+        res.status(500).send('Error generating pairing code: ' + err.message);
+    }
+});
+
+// 2. QR Code Endpoint (Fallback)
 app.get('/qr', (req, res) => {
     if (!qrCodeData) {
-        return res.send('<h3 style="font-family:sans-serif; text-align:center; margin-top:50px;">WhatsApp connected hai ya QR code ban raha hai... 10 sec baad Page refresh karein!</h3>');
+        return res.send('<h3 style="font-family:sans-serif; text-align:center; margin-top:50px;">WhatsApp connected hai ya Code ban raha hai... 10 sec baad Page refresh karein!</h3>');
     }
     const code = qrImage.image(qrCodeData, { type: 'png' });
     res.type('png');
     code.pipe(res);
 });
 
-// Send Message Endpoint for Pabbly Connect
+// 3. Send Message Endpoint for Pabbly
 app.post('/send-message', async (req, res) => {
     const { phone, message } = req.body;
     try {
