@@ -19,7 +19,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const ADMIN_EMAIL = 'YOUR_EMAIL@gmail.com'; // जिस ईमेल पर अलर्ट पाना चाहते हैं
-const ADMIN_PHONE = '917838436638@s.whatsapp.net';
+const ADMIN_PHONE = '917065150744@s.whatsapp.net';
 
 // 📩 Email Bhejne Ka Function
 async function sendEmailAlert(subject, text) {
@@ -100,7 +100,7 @@ async function connectToWhatsApp() {
 app.get('/pairing-code', async (req, res) => {
     const phone = req.query.phone;
     if (!phone) {
-        return res.status(400).send('Please add phone number! Example: /pairing-code?phone=917838436638');
+        return res.status(400).send('Please add phone number! Example: /pairing-code?phone=917065150744');
     }
     
     try {
