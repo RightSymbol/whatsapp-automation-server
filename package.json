@@ -1,6 +1,7 @@
 {
   "name": "whatsapp-koyeb-api",
   "version": "1.0.0",
+  "description": "WhatsApp Baileys API with Permanent MongoDB Session Store",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -8,6 +9,7 @@
   "dependencies": {
     "@whiskeysockets/baileys": "^6.6.0",
     "express": "^4.18.2",
+    "mongoose": "^8.0.0",
     "nodemailer": "^6.9.7",
     "qr-image": "^3.2.0"
   }
