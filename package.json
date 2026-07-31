@@ -1,14 +1,13 @@
 {
-  "name": "whatsapp-server",
+  "name": "whatsapp-koyeb-api",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^6.6.0",
     "express": "^4.18.2",
-    "qr-image": "^3.2.0",
-    "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.23.0"
+    "qr-image": "^3.2.0"
   }
 }
