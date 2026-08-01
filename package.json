@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "WhatsApp Baileys API with Permanent MongoDB Session Store",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
