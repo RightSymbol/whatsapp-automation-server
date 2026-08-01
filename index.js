@@ -1,8 +1,8 @@
-const { default: makeWASocket, DisconnectReason, delay, Browsers } = require('@whiskeysockets/baileys');
-const express = require('express');
-const qrImage = require('qr-image');
-const nodemailer = require('nodemailer');
-const mongoose = require('mongoose');
+import makeWASocket, { DisconnectReason, delay, Browsers, initAuthCreds, proto } from '@whiskeysockets/baileys';
+import express from 'express';
+import qrImage from 'qr-image';
+import nodemailer from 'nodemailer';
+import mongoose from 'mongoose';
 
 const app = express();
 app.use(express.json());
@@ -27,10 +27,8 @@ const SessionSchema = new mongoose.Schema({
 });
 const SessionModel = mongoose.model('Session', SessionSchema);
 
-// Memory Cache to prevent database read delay during pairing
 const sessionCache = new Map();
 
-// Optimized MongoDB Auth State Provider
 async function useMongoDBAuthState() {
     const readData = async (id) => {
         try {
@@ -75,7 +73,7 @@ async function useMongoDBAuthState() {
         }
     };
 
-    const creds = (await readData('creds')) || require('@whiskeysockets/baileys').initAuthCreds();
+    const creds = (await readData('creds')) || initAuthCreds();
 
     return {
         state: {
@@ -87,7 +85,7 @@ async function useMongoDBAuthState() {
                         ids.map(async (id) => {
                             let value = await readData(`${type}-${id}`);
                             if (type === 'app-state-sync-key' && value) {
-                                value = require('@whiskeysockets/baileys').proto.Message.AppStateSyncKeyData.fromObject(value);
+                                value = proto.Message.AppStateSyncKeyData.fromObject(value);
                             }
                             if (value) data[id] = value;
                         })
@@ -148,7 +146,7 @@ async function connectToWhatsApp() {
     sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: Browsers.macOS('Desktop'), // Realistic Browser UserAgent
+        browser: Browsers.macOS('Desktop'),
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000
@@ -207,7 +205,6 @@ async function connectToWhatsApp() {
 
 // 🌐 4. API ENDPOINTS
 
-// 1. Pairing Code Endpoint
 app.get('/pairing-code', async (req, res) => {
     const phone = req.query.phone;
     if (!phone) {
@@ -233,7 +230,6 @@ app.get('/pairing-code', async (req, res) => {
     }
 });
 
-// 2. QR Code Endpoint
 app.get('/qr', (req, res) => {
     if (!qrCodeData) {
         return res.send('<h3 style="font-family:sans-serif; text-align:center; margin-top:50px;">WhatsApp connected hai ya Code ban raha hai... Page refresh karein!</h3>');
@@ -243,7 +239,6 @@ app.get('/qr', (req, res) => {
     code.pipe(res);
 });
 
-// 3. Send Message Endpoint for Pabbly
 app.post('/send-message', async (req, res) => {
     const { phone, message } = req.body;
     try {
