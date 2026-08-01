@@ -1,4 +1,4 @@
-const { default: makeWASocket, DisconnectReason, delay } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, delay, Browsers } = require('@whiskeysockets/baileys');
 const express = require('express');
 const qrImage = require('qr-image');
 const nodemailer = require('nodemailer');
@@ -27,18 +27,26 @@ const SessionSchema = new mongoose.Schema({
 });
 const SessionModel = mongoose.model('Session', SessionSchema);
 
-// Custom MongoDB Auth State Provider for Baileys (Permanent Login)
+// Memory Cache to prevent database read delay during pairing
+const sessionCache = new Map();
+
+// Optimized MongoDB Auth State Provider
 async function useMongoDBAuthState() {
     const readData = async (id) => {
         try {
+            if (sessionCache.has(id)) {
+                return sessionCache.get(id);
+            }
             const result = await SessionModel.findOne({ id });
             if (!result) return null;
-            return JSON.parse(result.data, (key, value) => {
+            const parsed = JSON.parse(result.data, (key, value) => {
                 if (value && typeof value === 'object' && value.type === 'Buffer') {
                     return Buffer.from(value.data);
                 }
                 return value;
             });
+            sessionCache.set(id, parsed);
+            return parsed;
         } catch (error) {
             return null;
         }
@@ -46,6 +54,7 @@ async function useMongoDBAuthState() {
 
     const writeData = async (id, data) => {
         try {
+            sessionCache.set(id, data);
             const value = JSON.stringify(data);
             await SessionModel.findOneAndUpdate(
                 { id },
@@ -59,6 +68,7 @@ async function useMongoDBAuthState() {
 
     const removeData = async (id) => {
         try {
+            sessionCache.delete(id);
             await SessionModel.deleteOne({ id });
         } catch (error) {
             console.log(`Error deleting session data for ${id}:`, error);
@@ -137,7 +147,11 @@ async function connectToWhatsApp() {
 
     sock = makeWASocket({
         auth: state,
-        printQRInTerminal: false
+        printQRInTerminal: false,
+        browser: Browsers.macOS('Desktop'), // Realistic Browser UserAgent
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 25000
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -156,6 +170,7 @@ async function connectToWhatsApp() {
             console.log(`❌ WhatsApp Disconnected! Code: ${statusCode}`);
 
             if (statusCode === DisconnectReason.loggedOut) {
+                sessionCache.clear();
                 await SessionModel.deleteMany({});
                 console.log('🧹 Session cleared from MongoDB after logout.');
             }
@@ -202,7 +217,7 @@ app.get('/pairing-code', async (req, res) => {
     try {
         if (!sock) return res.status(500).send('Socket not ready. Retry in 10 seconds.');
 
-        await delay(2000);
+        await delay(3000);
         const cleanNumber = phone.replace(/[^0-9]/g, '');
         const code = await sock.requestPairingCode(cleanNumber);
 
