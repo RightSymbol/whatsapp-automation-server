@@ -28,7 +28,6 @@ let connectionStatus = 'disconnected'; // disconnected | connecting | open
 // 1. MONGODB CONFIGURATION & SESSION SCHEMA
 // ---------------------------------------------------------------------------
 const MONGO_URI = process.env.MONGO_URI;
-
 if (!MONGO_URI) {
     console.error('❌ ERROR: MONGO_URI Environment Variable is not set on Render!');
 } else {
@@ -129,11 +128,10 @@ async function useMongoDBAuthState() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. EMAIL ALERTS (optional — safe no-op if not configured)
+// 2. EMAIL ALERTS
 // ---------------------------------------------------------------------------
 const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
-
 const transporter = (EMAIL_USER && EMAIL_PASS)
     ? nodemailer.createTransport({
         service: 'gmail',
@@ -164,8 +162,6 @@ async function sendEmailAlert(subject, text) {
 // ---------------------------------------------------------------------------
 // 3. WHATSAPP CONNECTION LOGIC
 // ---------------------------------------------------------------------------
-// phoneForPairing: if provided AND the account is not yet registered, a
-// pairing code will be requested once, right after the socket is created.
 async function connectToWhatsApp(phoneForPairing = null) {
     if (isConnecting) {
         console.log('⏳ Connection already in progress, skipping duplicate call.');
@@ -177,7 +173,6 @@ async function connectToWhatsApp(phoneForPairing = null) {
 
     try {
         const { state, saveCreds, clearAll } = await useMongoDBAuthState();
-
         sock = makeWASocket({
             auth: state,
             printQRInTerminal: false,
@@ -191,14 +186,12 @@ async function connectToWhatsApp(phoneForPairing = null) {
 
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, qr } = update;
-
             if (qr) qrCodeData = qr;
 
             if (connection === 'close') {
                 connectionStatus = 'disconnected';
                 const statusCode = (lastDisconnect?.error)?.output?.statusCode;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
                 console.log(`❌ WhatsApp Disconnected! Code: ${statusCode}`);
 
                 if (statusCode === DisconnectReason.loggedOut) {
@@ -243,10 +236,8 @@ async function connectToWhatsApp(phoneForPairing = null) {
             }
         });
 
-        // Request a pairing code once, right after the socket exists —
-        // NOT on every HTTP hit. This is what Baileys actually expects.
         if (phoneForPairing && !state.creds.registered) {
-            await delay(1500); // let the socket handshake settle
+            await delay(2000);
             try {
                 const rawCode = await sock.requestPairingCode(phoneForPairing);
                 pairingCodeData = rawCode?.match(/.{1,4}/g)?.join('-') || rawCode;
@@ -268,10 +259,6 @@ async function connectToWhatsApp(phoneForPairing = null) {
 // ---------------------------------------------------------------------------
 // 4. API ENDPOINTS
 // ---------------------------------------------------------------------------
-
-// GET /pairing-code?phone=91XXXXXXXXXX
-// Safe to call repeatedly — it will NOT spam WhatsApp with new socket/code
-// requests if one is already in flight or already valid.
 app.get('/pairing-code', async (req, res) => {
     const rawPhone = req.query.phone;
     if (!rawPhone) {
@@ -279,33 +266,29 @@ app.get('/pairing-code', async (req, res) => {
     }
     const phone = rawPhone.replace(/[^0-9]/g, '');
 
-    // Already fully linked
     if (sock && sock.authState?.creds?.registered && connectionStatus === 'open') {
         return res.send('<h3 style="font-family:sans-serif;text-align:center;margin-top:50px;">WhatsApp pehle se connected hai! Naya number jodne ke liye pehle Linked Devices se logout karein.</h3>');
     }
 
-    // A valid code for this exact phone is already waiting to be used
     if (pairingCodeData && pairingRequestedFor === phone) {
         return res.send(renderPairingPage(pairingCodeData));
     }
 
-    // Something is already being set up — ask the user to wait, don't fire a new socket
     if (isConnecting) {
         return res.status(503).send('<h3 style="font-family:sans-serif;text-align:center;margin-top:50px;">Connection ban raha hai... 5 second baad page refresh karein.</h3>');
     }
 
-    // Fresh attempt: close any stale/dead socket first, then start clean
     if (sock) {
         try { sock.end(undefined); } catch (_) {}
         sock = null;
     }
+
     pairingCodeData = null;
     pairingError = null;
     pairingRequestedFor = phone;
 
-    connectToWhatsApp(phone); // fire and forget — response below waits briefly
+    connectToWhatsApp(phone);
 
-    // Poll for up to ~12 seconds for the code to appear
     for (let i = 0; i < 12; i++) {
         await delay(1000);
         if (pairingCodeData && pairingRequestedFor === phone) {
@@ -329,7 +312,6 @@ function renderPairingPage(code) {
     `;
 }
 
-// GET /qr — alternative linking method
 app.get('/qr', (req, res) => {
     if (!qrCodeData) {
         if (!sock && !isConnecting) connectToWhatsApp();
@@ -340,7 +322,6 @@ app.get('/qr', (req, res) => {
     code.pipe(res);
 });
 
-// GET /status — quick health check
 app.get('/status', (req, res) => {
     res.json({
         connectionStatus,
@@ -351,7 +332,6 @@ app.get('/status', (req, res) => {
     });
 });
 
-// POST /send-message  { "phone": "9199...", "message": "hi" }
 app.post('/send-message', async (req, res) => {
     const { phone, message } = req.body || {};
     if (!phone || !message) {
@@ -378,7 +358,5 @@ app.post('/send-message', async (req, res) => {
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    // Start a plain socket at boot (no pairing code yet) so /qr and
-    // "already logged in" restores work without waiting for a request.
     connectToWhatsApp();
 });
